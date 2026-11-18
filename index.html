@@ -91,7 +91,7 @@
 
                 // 修正 4：3D Tiles 必須改用 await Cesium.Cesium3DTileset.fromUrl()
                 try {
-                    const tileset = await Cesium.Cesium3DTileset.fromUrl('https://3dtiles.nlsc.gov.tw/building/tiles3d/0/tileset.json');
+                    const tileset = await Cesium.Cesium3DTileset.fromUrl('https://3d-assets.omniguider.com/TP_3DTiles_115_TP/tileset.json');
                     viewer.scene.primitives.add(tileset);
                 } catch (tileErr) {
                     // 捕捉 GLB 檔案 deocding failed 錯誤，不讓程式崩潰
