@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>台北市三維圖台 (整合地形與防暈系統)</title>
+    <title>台北市三維圖台 (極簡防暈版)</title>
     
     <style>
         body, html {
@@ -29,57 +29,29 @@
         /* 防暈眩邊緣暗角遮罩 */
         .vignette-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 4; pointer-events: none; 
+            z-index: 4; pointer-events: none; /* 讓滑鼠操作穿透 */
             background: radial-gradient(circle, rgba(0,0,0,0) 40%, rgba(0,0,0,0.85) 100%);
             opacity: 0; transition: opacity 0.2s ease-in-out; 
         }
         .vignette-layer.active { opacity: 1; }
 
-        /* 左側控制面板 */
-        #controlPanel {
-            position: absolute; top: 20px; left: 20px;
-            background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px);
-            color: #fff; padding: 20px; border-radius: 12px; z-index: 5;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);
-            width: 320px; max-height: 90vh; overflow-y: auto; box-sizing: border-box;
+        /* 右上角極簡開關面板 (Hacker 風格) */
+        #ui-panel {
+            position: absolute; top: 20px; right: 20px; z-index: 10;
+            background-color: rgba(0, 0, 0, 0.85); color: #00FF00;
+            border: 1px solid #00FF00; padding: 12px 16px;
+            font-family: Consolas, monospace; font-size: 14px;
+            border-radius: 4px; box-shadow: 0 0 10px rgba(0, 255, 0, 0.2); 
+            user-select: none;
         }
-        #controlPanel::-webkit-scrollbar { width: 6px; }
-        #controlPanel::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
-        #controlPanel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
-        
-        .panel-title { font-weight: 600; font-size: 1.15rem; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px; letter-spacing: 1px; }
-        .section-title { font-size: 0.85rem; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 15px;}
-        .control-group { display: flex; flex-direction: column; gap: 12px; margin-bottom: 10px; }
-        .flex-between { display: flex; justify-content: space-between; align-items: center; }
-        .value-display { background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 4px; font-family: monospace; font-size: 0.9rem; color: #38bdf8; }
-        
-        input[type="range"] { width: 100%; cursor: pointer; accent-color: #38bdf8; }
-        input[type="checkbox"] { accent-color: #38bdf8; width: 16px; height: 16px; cursor: pointer; }
-
-        button { background: #3b82f6; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.2s; font-size: 0.9rem; }
-        button:hover { background: #2563eb; }
-        button.active { background: #ef4444; }
-        button.active:hover { background: #dc2626; }
-        button.btn-add { background: #10b981; margin-top: 10px; }
-        button.btn-add:hover { background: #059669; }
-        button.btn-del { background: #ef4444; padding: 4px 8px; font-size: 0.75rem; border-radius: 4px;}
-        button.btn-del:hover { background: #dc2626; }
-
-        .coord-box { background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; font-size: 0.85rem; font-family: monospace; color: #cbd5e1; }
-
-        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 10px; }
-        th, td { text-align: left; padding: 8px 4px; border-bottom: 1px solid rgba(255,255,255,0.1); }
-        th { color: #94a3b8; font-weight: normal; }
-
-        #toastBox {
-            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px);
-            background: #f59e0b; color: #fff; padding: 12px 24px; border-radius: 8px; font-weight: 600;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3); opacity: 0; visibility: hidden; transition: all 0.3s ease; z-index: 100;
+        #ui-panel label { 
+            cursor: pointer; display: flex; align-items: center; gap: 8px; 
         }
-        #toastBox.show { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+        #ui-panel input[type="checkbox"] { 
+            accent-color: #00FF00; width: 16px; height: 16px; cursor: pointer; 
+        }
     </style>
 
-    <!-- 依照你的要求，維持 1.105.1 版本 -->
     <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.105.1/Build/Cesium/Widgets/widgets.css">
     <script>
         window.CESIUM_BASE_URL = 'https://cesium.com/downloads/cesiumjs/releases/1.105.1/Build/Cesium/';
@@ -91,56 +63,16 @@
         <div>載入 3D 引擎與衛星圖資中，請稍候...</div>
     </div>
     
-    <div id="toastBox">系統訊息</div>
-    
     <!-- 3D 圖台與防暈遮罩 -->
     <div id="cesiumContainer"></div>
     <div id="vignette-mask" class="vignette-layer"></div>
     
-    <div id="controlPanel">
-        <div class="panel-title">功能區</div>
-        
-        <!-- 新增：防暈眩設定區塊 -->
-        <div class="section-title">防暈眩設定</div>
-        <div class="control-group">
-            <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                <input type="checkbox" id="antiSicknessToggle" checked>
-                <span style="font-size: 0.9rem; color: #cbd5e1;">啟用動態遮罩與景深</span>
-            </label>
-        </div>
-
-        <div class="section-title">顯示設定</div>
-        <div class="control-group">
-            <div class="flex-between">
-                <span style="font-size:0.9rem; color:#cbd5e1;">3D 建物透明度</span>
-                <span class="value-display" id="opacityValue">40%</span>
-            </div>
-            <input type="range" id="opacitySlider" min="0" max="100" value="40">
-        </div>
-
-        <div class="section-title">點位建置作業</div>
-        <div class="control-group">
-            <button id="btnPickPoint">按鈕1: 選取平面座標</button>
-            <div class="coord-box">
-                <div>X: <span id="displayX">--</span></div>
-                <div style="margin-top:4px;">Y: <span id="displayY">--</span></div>
-            </div>
-
-            <div class="flex-between" style="margin-top: 8px;">
-                <span style="font-size:0.9rem; color:#cbd5e1;">Z 值高度設定 (公尺)</span>
-                <span class="value-display" id="displayZ">0</span>
-            </div>
-            <input type="range" id="zSlider" min="-50" max="600" value="0">
-            <button id="btnAddPoint" class="btn-add">按鈕2: 產生 3D 點座標</button>
-        </div>
-
-        <div class="section-title">已產生點位表單</div>
-        <table>
-            <thead>
-                <tr><th>X</th><th>Y</th><th>Z</th><th>操作</th></tr>
-            </thead>
-            <tbody id="pointsTableBody"></tbody>
-        </table>
+    <!-- 右上角防暈模式開關 -->
+    <div id="ui-panel">
+        <label>
+            <input type="checkbox" id="antiSicknessToggle" checked>
+            開啟防暈模式 (動態遮罩 + 景深)
+        </label>
     </div>
 
     <script>
@@ -149,37 +81,12 @@
         script.onload = initCesiumApp;
         document.head.appendChild(script);
 
-        // UI 元素
-        const opacitySlider = document.getElementById('opacitySlider');
-        const opacityValueDisplay = document.getElementById('opacityValue');
-        const btnPickPoint = document.getElementById('btnPickPoint');
-        const displayX = document.getElementById('displayX');
-        const displayY = document.getElementById('displayY');
-        const zSlider = document.getElementById('zSlider');
-        const displayZ = document.getElementById('displayZ');
-        const btnAddPoint = document.getElementById('btnAddPoint');
-        const pointsTableBody = document.getElementById('pointsTableBody');
-        const toastBox = document.getElementById('toastBox');
-        
-        // 防暈眩 UI
+        // UI 與狀態變數
         const antiSicknessToggle = document.getElementById('antiSicknessToggle');
         const maskElement = document.getElementById('vignette-mask');
-
-        // 狀態變數
-        let isPicking = false;
         let isMoving = false;
         let isAntiSicknessEnabled = true;
-        let currentX = null;
-        let currentY = null;
-        let pointsArray = [];
 
-        function showToast(message) {
-            toastBox.textContent = message;
-            toastBox.classList.add('show');
-            setTimeout(() => toastBox.classList.remove('show'), 3000);
-        }
-
-        // 修正：改用 async 確保程式不會因為載入錯誤而卡死
         async function initCesiumApp() {
             const taipeiLongitude = 121.5654;
             const taipeiLatitude = 25.0330;
@@ -197,13 +104,13 @@
                     baseLayerPicker: false, geocoder: false, homeButton: false,
                     sceneModePicker: false, navigationHelpButton: false, animation: false,
                     timeline: false, fullscreenButton: false, baseLayer: false,
-                    requestRenderMode: true // 效能優化核心
+                    requestRenderMode: true // 開啟效能優化 (按需渲染)
                 });
 
                 viewer.scene.globe.depthTestAgainstTerrain = true;
-                viewer.scene.debugShowFramesPerSecond = true;
+                viewer.scene.debugShowFramesPerSecond = true; // 顯示 FPS
 
-                // 修正：Cesium 1.104+ 必須使用 fromUrl() 來非同步載入 ArcGIS 底圖
+                // 載入 ArcGIS 衛星底圖
                 try {
                     const imageryProvider = await Cesium.ArcGisMapServerImageryProvider.fromUrl(
                         'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer',
@@ -218,26 +125,11 @@
                 try {
                     const tileset = await Cesium.Cesium3DTileset.fromUrl('https://3dtiles.nlsc.gov.tw/building/tiles3d/0/tileset.json');
                     viewer.scene.primitives.add(tileset);
-                    
-                    function updateTilesetOpacity(opacityPercent) {
-                        const opacityDecimal = opacityPercent / 100;
-                        tileset.style = new Cesium.Cesium3DTileStyle({
-                            color: "color('white', " + opacityDecimal + ")"
-                        });
-                        viewer.scene.requestRender();
-                    }
-
-                    updateTilesetOpacity(opacitySlider.value);
-                    opacitySlider.addEventListener('input', function(e) {
-                        updateTilesetOpacity(e.target.value);
-                        opacityValueDisplay.textContent = e.target.value + '%';
-                    });
                 } catch (tileErr) {
-                    console.error('3D Tiles 載入失敗:', tileErr);
-                    showToast('3D 模型載入失敗，可能有 CORS 限制');
+                    console.error('3D Tiles 載入失敗 (可能有 CORS 限制):', tileErr);
                 }
 
-                // 初始視角定位
+                // 初始視角定位 (台北 101)
                 viewer.camera.setView({
                     destination: Cesium.Cartesian3.fromDegrees(taipeiLongitude, taipeiLatitude, viewHeight),
                     orientation: { heading: 0.0, pitch: Cesium.Math.toRadians(-60.0), roll: 0.0 }
@@ -247,17 +139,22 @@
                 // ================= 防暈眩機制設定 =================
                 viewer.scene.postProcessStages.depthOfField.enabled = true;
 
+                // 開關事件
                 antiSicknessToggle.addEventListener('change', function(e) {
                     isAntiSicknessEnabled = e.target.checked;
                     viewer.scene.postProcessStages.depthOfField.enabled = isAntiSicknessEnabled;
-                    if (!isAntiSicknessEnabled) maskElement.classList.remove('active');
+                    if (!isAntiSicknessEnabled) {
+                        maskElement.classList.remove('active');
+                    }
                     viewer.scene.requestRender();
                 });
 
+                // 相機移動事件 (觸發邊緣遮罩)
                 viewer.camera.moveStart.addEventListener(function() {
                     isMoving = true;
                     if (isAntiSicknessEnabled) {
                         maskElement.classList.add('active');
+                        // 拖曳時將景深推遠，避免前景頻繁閃爍
                         viewer.scene.postProcessStages.depthOfField.focalDistance = 2000.0;
                     }
                     viewer.scene.requestRender();
@@ -271,9 +168,8 @@
                     viewer.scene.requestRender();
                 });
 
-                // ================= 事件監聽 (滑鼠移動與點擊) =================
+                // 滑鼠移動事件 (觸發動態對焦)
                 const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-
                 handler.setInputAction(function(movement) {
                     if (isMoving || !isAntiSicknessEnabled) return; 
 
@@ -287,115 +183,10 @@
                     }
                 }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
-                handler.setInputAction(function(clickEvent) {
-                    if (isPicking) {
-                        const cartesian = viewer.scene.pickPosition(clickEvent.position);
-                        if (Cesium.defined(cartesian)) {
-                            const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
-                            currentX = Cesium.Math.toDegrees(cartographic.longitude).toFixed(5);
-                            currentY = Cesium.Math.toDegrees(cartographic.latitude).toFixed(5);
-                            
-                            displayX.textContent = currentX;
-                            displayY.textContent = currentY;
-
-                            isPicking = false;
-                            btnPickPoint.classList.remove('active');
-                            btnPickPoint.textContent = '按鈕1: 選取平面座標';
-                            viewer.canvas.style.cursor = 'default';
-                        } else {
-                            showToast('請點擊地球表面或建築物！');
-                        }
-                    } else {
-                        const pickedObjects = viewer.scene.drillPick(clickEvent.position);
-                        if (pickedObjects.length > 0) {
-                            for (let i = 0; i < pickedObjects.length; i++) {
-                                const picked = pickedObjects[i];
-                                if (Cesium.defined(picked) && Cesium.defined(picked.id)) {
-                                    const entityId = picked.id.id; 
-                                    const targetPoint = pointsArray.find(p => p.id === entityId);
-                                    if (targetPoint) {
-                                        showToast(`📌 點選資訊 - X: ${targetPoint.x}, Y: ${targetPoint.y}, Z: ${targetPoint.z}m`);
-                                        break; 
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
-
-                // UI 按鈕事件綁定
-                zSlider.addEventListener('input', e => displayZ.textContent = e.target.value);
-
-                btnPickPoint.addEventListener('click', () => {
-                    isPicking = !isPicking;
-                    if (isPicking) {
-                        btnPickPoint.classList.add('active');
-                        btnPickPoint.textContent = '取消選取 (點擊地圖任意處)';
-                        viewer.canvas.style.cursor = 'crosshair';
-                    } else {
-                        btnPickPoint.classList.remove('active');
-                        btnPickPoint.textContent = '按鈕1: 選取平面座標';
-                        viewer.canvas.style.cursor = 'default';
-                    }
-                });
-
-                btnAddPoint.addEventListener('click', () => {
-                    if (currentX === null || currentY === null) {
-                        showToast('請先使用按鈕1選取平面座標！');
-                        return;
-                    }
-                    const zValue = parseFloat(zSlider.value);
-                    const pointId = 'point_' + Date.now();
-
-                    viewer.entities.add({
-                        id: pointId,
-                        position: Cesium.Cartesian3.fromDegrees(parseFloat(currentX), parseFloat(currentY), zValue),
-                        ellipsoid: {
-                            radii: new Cesium.Cartesian3(0.75, 0.75, 0.75), 
-                            material: Cesium.Color.fromCssColorString('#facc15'), 
-                            outline: true, outlineColor: Cesium.Color.BLACK
-                        }
-                    });
-
-                    pointsArray.push({ id: pointId, x: currentX, y: currentY, z: zValue });
-                    renderPointsTable();
-                    viewer.scene.requestRender();
-                    showToast('點位建置成功！');
-                });
-
-                // (將 deletePoint 綁定至 window 確保 onclick 可以呼叫)
-                window.deletePoint = function(id) {
-                    viewer.entities.removeById(id);
-                    pointsArray = pointsArray.filter(p => p.id !== id);
-                    renderPointsTable();
-                    viewer.scene.requestRender();
-                };
-
-                function renderPointsTable() {
-                    pointsTableBody.innerHTML = '';
-                    if(pointsArray.length === 0) {
-                        pointsTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#64748b; padding:15px;">尚無點位資料</td></tr>';
-                        return;
-                    }
-                    pointsArray.forEach(pt => {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `
-                            <td title="${pt.x}">${pt.x.substring(0,6)}...</td>
-                            <td title="${pt.y}">${pt.y.substring(0,6)}...</td>
-                            <td>${pt.z}</td>
-                            <td><button class="btn-del" onclick="deletePoint('${pt.id}')">刪除</button></td>
-                        `;
-                        pointsTableBody.appendChild(tr);
-                    });
-                }
-                
-                renderPointsTable();
-
             } catch (error) {
                 console.error('Cesium 圖台發生嚴重錯誤:', error);
-                showToast('圖台初始化失敗，請按 F12 查看錯誤訊息。');
             } finally {
-                // 修正：將移除 Loading 的邏輯放在 finally，確保一定會執行
+                // 隱藏 Loading 畫面
                 const overlay = document.getElementById('loadingOverlay');
                 if (overlay) {
                     overlay.style.opacity = '0';
