@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>國土測繪中心 3D Tiles - 防暈對照測試</title>
+    <title>國土測繪中心 3D Tiles - 防暈對照測試 (台北信義區)</title>
     
     <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
     <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
@@ -23,37 +23,16 @@
         }
         .vignette-layer.active { opacity: 1; }
 
-        /* 右上角切換控制面板 (高對比 Hacker 主題) */
+        /* UI 控制面板 (Hacker 風格) */
         #ui-panel {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            z-index: 10000;
-            background-color: rgba(0, 0, 0, 0.85);
-            color: #00FF00;
-            border: 1px solid #00FF00;
-            padding: 12px 16px;
-            font-family: Consolas, monospace;
-            font-size: 14px;
-            border-radius: 4px;
-            box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
-            user-select: none;
+            position: absolute; top: 20px; right: 20px; z-index: 10000;
+            background-color: rgba(0, 0, 0, 0.85); color: #00FF00;
+            border: 1px solid #00FF00; padding: 12px 16px;
+            font-family: Consolas, monospace; font-size: 14px;
+            border-radius: 4px; box-shadow: 0 0 10px rgba(0, 255, 0, 0.2); user-select: none;
         }
-
-        #ui-panel label {
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        /* 自訂 Checkbox 顏色 */
-        #ui-panel input[type="checkbox"] {
-            accent-color: #00FF00;
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-        }
+        #ui-panel label { cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        #ui-panel input[type="checkbox"] { accent-color: #00FF00; width: 16px; height: 16px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -61,7 +40,6 @@
     <div id="cesiumContainer"></div>
     <div id="vignette-mask" class="vignette-layer"></div>
 
-    <!-- UI 控制面板 -->
     <div id="ui-panel">
         <label>
             <input type="checkbox" id="anti-sickness-toggle" checked>
@@ -70,30 +48,56 @@
     </div>
 
     <script>
+        // 1. 定義國土測繪中心的 WMTS 正射影像 (PHOTO2) 服務
+        const nlscWmtsProvider = new Cesium.WebMapTileServiceImageryProvider({
+            url: 'https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{TileMatrix}/{TileRow}/{TileCol}',
+            layer: 'PHOTO2',
+            style: 'default',
+            format: 'image/jpeg',
+            tileMatrixSetID: 'GoogleMapsCompatible',
+            maximumLevel: 19
+        });
+
+        // 2. 初始化 Viewer，並將正射影像設為預設底圖
         const viewer = new Cesium.Viewer('cesiumContainer', {
+            imageryProvider: nlscWmtsProvider,
             baseLayerPicker: false, geocoder: false, homeButton: true,
             infoBox: false, navigationHelpButton: false, sceneModePicker: false,
-            animation: false, timeline: false, requestRenderMode: true
+            animation: false, timeline: false, 
+            requestRenderMode: true 
         });
+
         viewer.scene.debugShowFramesPerSecond = true;
         viewer.scene.globe.depthTestAgainstTerrain = true;
 
-        // 載入 3D Tiles
+        // 3. 載入 3D Tiles
         try {
             const tileset = new Cesium.Cesium3DTileset({
-                url: 'https://3dtiles.nlsc.gov.tw/building/tiles3d/0/tileset.json',
+                url: 'https://3dtiles.nlsc.gov.tw/building/tiles3d/0/tileset.json', 
                 maximumScreenSpaceError: 16,
                 maximumMemoryUsage: 2048
             });
             viewer.scene.primitives.add(tileset);
+            
             tileset.readyPromise.then(function(tileset) {
-                viewer.zoomTo(tileset, new Cesium.HeadingPitchRange(0, -0.5, 800));
+                // 將初始視角飛至台北 101 與市政府附近
+                viewer.camera.flyTo({
+                    destination: Cesium.Cartesian3.fromDegrees(121.5645, 25.0339, 1200), // 經緯度與高度 (1200公尺)
+                    orientation: {
+                        heading: Cesium.Math.toRadians(0), // 面向北
+                        pitch: Cesium.Math.toRadians(-45), // 俯角 45 度
+                        roll: 0.0
+                    }
+                });
+                viewer.scene.requestRender();
+            }).catch(function(error){
+                console.warn("3D Tiles 載入失敗，但底圖仍可正常顯示", error);
             });
         } catch (error) {
             console.log("初始化 3D Tiles 發生錯誤: ", error);
         }
 
-        // 防暈機制變數
+        // ================= 防暈機制 =================
         let isMoving = false;
         let isAntiSicknessEnabled = true;
         const maskElement = document.getElementById('vignette-mask');
@@ -101,10 +105,8 @@
 
         viewer.scene.postProcessStages.depthOfField.enabled = true;
 
-        // 監聽 UI 開關切換
         toggleCheckbox.addEventListener('change', function() {
             isAntiSicknessEnabled = this.checked;
-            
             if (isAntiSicknessEnabled) {
                 viewer.scene.postProcessStages.depthOfField.enabled = true;
             } else {
@@ -114,7 +116,6 @@
             viewer.scene.requestRender();
         });
 
-        // 相機開始移動
         viewer.camera.moveStart.addEventListener(function() {
             isMoving = true;
             if (isAntiSicknessEnabled) {
@@ -124,7 +125,6 @@
             viewer.scene.requestRender();
         });
 
-        // 相機停止移動
         viewer.camera.moveEnd.addEventListener(function() {
             isMoving = false;
             if (isAntiSicknessEnabled) {
@@ -133,9 +133,7 @@
             viewer.scene.requestRender();
         });
 
-        // 滑鼠動態景深
         viewer.screenSpaceEventHandler.setInputAction(function(movement) {
-            // 如果正在移動，或是未開啟防暈模式，則跳過計算
             if (isMoving || !isAntiSicknessEnabled) return; 
 
             const pickedPosition = viewer.scene.pickPosition(movement.endPosition);
