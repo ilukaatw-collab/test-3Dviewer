@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>台北市三維圖台 (硬體觸發防暈版)</title>
+    <title>台北市三維圖台 (模型修復版)</title>
     
     <style>
         body, html {
@@ -25,7 +25,7 @@
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        /* 防暈眩邊緣暗角遮罩 (加深對比，強制置頂) */
+        /* 防暈眩遮罩 */
         .vignette-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             z-index: 9999; pointer-events: none; 
@@ -34,7 +34,7 @@
         }
         .vignette-layer.active { opacity: 1; }
 
-        /* 右上角極簡開關面板 */
+        /* 右上角面板 */
         #ui-panel {
             position: absolute; top: 20px; right: 20px; z-index: 10000;
             background-color: rgba(0, 0, 0, 0.85); color: #00FF00;
@@ -89,12 +89,12 @@
             let viewer;
 
             try {
+                // 【修正 1】：拿掉 requestRenderMode，讓 3D Tiles 載入時能正常連續顯示
                 viewer = new Cesium.Viewer('cesiumContainer', {
                     terrain: Cesium.Terrain.fromWorldTerrain(), 
                     baseLayerPicker: false, geocoder: false, homeButton: false,
                     sceneModePicker: false, navigationHelpButton: false, animation: false,
-                    timeline: false, fullscreenButton: false, baseLayer: false,
-                    requestRenderMode: true 
+                    timeline: false, fullscreenButton: false, baseLayer: false
                 });
 
                 viewer.scene.globe.depthTestAgainstTerrain = true;
@@ -111,57 +111,53 @@
                 try {
                     const tileset = await Cesium.Cesium3DTileset.fromUrl('https://3dtiles.nlsc.gov.tw/building/tiles3d/0/tileset.json');
                     viewer.scene.primitives.add(tileset);
-                } catch (tileErr) {}
+                } catch (tileErr) {
+                    console.error('3D Tiles 載入失敗', tileErr);
+                }
 
                 viewer.camera.setView({
                     destination: Cesium.Cartesian3.fromDegrees(taipeiLongitude, taipeiLatitude, viewHeight),
                     orientation: { heading: 0.0, pitch: Cesium.Math.toRadians(-60.0), roll: 0.0 }
                 });
-                viewer.scene.requestRender();
 
                 // ================= 防暈眩機制設定 =================
                 viewer.scene.postProcessStages.depthOfField.enabled = true;
+                // 【修正 2】：設定預設焦距為 1500 公尺，確保一進來時地表模型是清晰的
+                viewer.scene.postProcessStages.depthOfField.focalDistance = viewHeight; 
+                viewer.scene.postProcessStages.depthOfField.focalLength = 20.0; 
+                viewer.scene.postProcessStages.depthOfField.fStop = 4.0;
 
                 antiSicknessToggle.addEventListener('change', function(e) {
                     isAntiSicknessEnabled = e.target.checked;
                     viewer.scene.postProcessStages.depthOfField.enabled = isAntiSicknessEnabled;
                     if (!isAntiSicknessEnabled) maskElement.classList.remove('active');
-                    viewer.scene.requestRender();
                 });
 
-                // --- 改用滑鼠硬體事件來強制觸發遮罩 ---
                 const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 
-                // 定義開啟遮罩的動作
                 function enableMask() {
                     isMoving = true;
                     if (isAntiSicknessEnabled) {
                         maskElement.classList.add('active');
                         viewer.scene.postProcessStages.depthOfField.focalDistance = 2000.0;
-                        viewer.scene.requestRender();
                     }
                 }
 
-                // 定義關閉遮罩的動作
                 function disableMask() {
                     isMoving = false;
                     if (isAntiSicknessEnabled) {
                         maskElement.classList.remove('active');
-                        viewer.scene.requestRender();
                     }
                 }
 
-                // 1. 只要滑鼠「按下去」(左鍵平移、中鍵旋轉、右鍵縮放)，遮罩立刻出來
                 handler.setInputAction(enableMask, Cesium.ScreenSpaceEventType.LEFT_DOWN);
                 handler.setInputAction(enableMask, Cesium.ScreenSpaceEventType.MIDDLE_DOWN);
                 handler.setInputAction(enableMask, Cesium.ScreenSpaceEventType.RIGHT_DOWN);
 
-                // 2. 只要滑鼠「放開」，遮罩立刻消失
                 handler.setInputAction(disableMask, Cesium.ScreenSpaceEventType.LEFT_UP);
                 handler.setInputAction(disableMask, Cesium.ScreenSpaceEventType.MIDDLE_UP);
                 handler.setInputAction(disableMask, Cesium.ScreenSpaceEventType.RIGHT_UP);
 
-                // 3. 針對「滾輪縮放」：滾動瞬間出現，0.5秒後自動消失
                 let wheelTimer;
                 handler.setInputAction(function() {
                     enableMask();
@@ -169,7 +165,6 @@
                     wheelTimer = setTimeout(disableMask, 500);
                 }, Cesium.ScreenSpaceEventType.WHEEL);
 
-                // 4. 靜止時的動態對焦 (維持不變)
                 handler.setInputAction(function(movement) {
                     if (isMoving || !isAntiSicknessEnabled) return; 
 
@@ -177,9 +172,6 @@
                     if (Cesium.defined(pickedPosition)) {
                         const distance = Cesium.Cartesian3.distance(viewer.camera.position, pickedPosition);
                         viewer.scene.postProcessStages.depthOfField.focalDistance = distance;
-                        viewer.scene.postProcessStages.depthOfField.focalLength = 20.0; 
-                        viewer.scene.postProcessStages.depthOfField.fStop = 4.0;        
-                        viewer.scene.requestRender(); 
                     }
                 }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
