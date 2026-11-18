@@ -91,11 +91,17 @@
 
                 // 修正 4：3D Tiles 必須改用 await Cesium.Cesium3DTileset.fromUrl()
                 try {
-                    const tileset = await Cesium.Cesium3DTileset.fromUrl('https://3d-assets.omniguider.com/TP_3DTiles_115_TP/tileset.json');
+                    // 1. 暫時註解掉 NLSC 的圖資，因為他們伺服器目前 Decoding Failed
+                    // const tileset = await Cesium.Cesium3DTileset.fromUrl('https://3dtiles.nlsc.gov.tw/building/tiles3d/0/tileset.json');
+                    
+                    // 2. 改用 Cesium 官方的 OSM 3D 建築來測試你的防暈眩與景深 UI
+                    const tileset = await Cesium.createOsmBuildingsAsync();
                     viewer.scene.primitives.add(tileset);
+                    
                 } catch (tileErr) {
                     // 捕捉 GLB 檔案 deocding failed 錯誤，不讓程式崩潰
-                    console.warn("部分 3D 模型載入失敗，略過錯誤繼續執行", tileErr);
+                    //console.warn("部分 3D 模型載入失敗，略過錯誤繼續執行", tileErr);
+                    console.warn("3D 模型載入失敗", tileErr);
                 }
 
                 // 飛向台北
