@@ -29,9 +29,11 @@
         /* 防暈眩邊緣暗角遮罩 */
         .vignette-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 4; pointer-events: none; /* 讓滑鼠操作穿透 */
-            background: radial-gradient(circle, rgba(0,0,0,0) 40%, rgba(0,0,0,0.85) 100%);
-            opacity: 0; transition: opacity 0.2s ease-in-out; 
+            z-index: 9999; /* 修正1：強制拉到最上層，絕對不被 3D 畫面蓋住 */
+            pointer-events: none; 
+            /* 修正2：稍微縮小透明區域，讓邊緣更黑更明顯，方便你確認效果 */
+            background: radial-gradient(circle, rgba(0,0,0,0) 30%, rgba(0,0,0,0.95) 100%);
+            opacity: 0; transition: opacity 0.2s ease-in-out;
         }
         .vignette-layer.active { opacity: 1; }
 
@@ -109,6 +111,9 @@
 
                 viewer.scene.globe.depthTestAgainstTerrain = true;
                 viewer.scene.debugShowFramesPerSecond = true; // 顯示 FPS
+
+                // 修正3：將相機移動的判定門檻降到最低，只要滑鼠一拖曳就立刻觸發遮罩
+                viewer.camera.percentageChanged = 0.01;
 
                 // 載入 ArcGIS 衛星底圖
                 try {
