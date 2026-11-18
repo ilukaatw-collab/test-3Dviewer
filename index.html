@@ -3,182 +3,276 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cesium 3D 防暈與景深測試 - 台北信義區</title>
-    
-    <!-- 引入 CesiumJS (使用官方 CDN) -->
-    <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
-    <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <title>台北市三維圖台 (整合地形與防暈系統)</title>
     
     <style>
-        /* 基本全螢幕設定 */
-        html, body, #cesiumContainer {
-            width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
-            background-color: #000;
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; font-family: 'Inter', sans-serif; background-color: #000;
         }
-
-        /* 邊緣暗角防暈遮罩 */
+        #cesiumContainer { width: 100%; height: 100%; display: block; }
+        
+        /* Loading 畫面 */
+        #loadingOverlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.9); color: #fff;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            font-size: 1.25rem; z-index: 20; transition: opacity 0.5s ease;
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3); border-top: 4px solid #fff;
+            border-radius: 50%; width: 40px; height: 40px;
+            animation: spin 1s linear infinite; margin-bottom: 1rem;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* 防暈眩邊緣暗角遮罩 */
         .vignette-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 9998; 
-            pointer-events: none; /* 讓滑鼠操作直接穿透 */
+            z-index: 4; pointer-events: none; 
             background: radial-gradient(circle, rgba(0,0,0,0) 40%, rgba(0,0,0,0.85) 100%);
-            opacity: 0; 
-            transition: opacity 0.2s ease-in-out; 
+            opacity: 0; transition: opacity 0.2s ease-in-out; 
         }
-        
-        /* 觸發遮罩的 class */
-        .vignette-layer.active { 
-            opacity: 1; 
-        }
+        .vignette-layer.active { opacity: 1; }
 
-        /* Hacker 風格 UI 控制面板 */
-        #ui-panel {
-            position: absolute; top: 20px; right: 20px; z-index: 10000;
-            background-color: rgba(0, 0, 0, 0.85); color: #00FF00;
-            border: 1px solid #00FF00; padding: 12px 16px;
-            font-family: Consolas, monospace; font-size: 14px;
-            border-radius: 4px; box-shadow: 0 0 10px rgba(0, 255, 0, 0.2); 
-            user-select: none;
+        /* 左側控制面板 */
+        #controlPanel {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px);
+            color: #fff; padding: 20px; border-radius: 12px; z-index: 5;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);
+            width: 320px; max-height: 90vh; overflow-y: auto; box-sizing: border-box;
         }
-        #ui-panel label { 
-            cursor: pointer; display: flex; align-items: center; gap: 8px; 
+        #controlPanel::-webkit-scrollbar { width: 6px; }
+        #controlPanel::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+        #controlPanel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+        
+        .panel-title { font-weight: 600; font-size: 1.15rem; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px; letter-spacing: 1px; }
+        .section-title { font-size: 0.85rem; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 15px;}
+        .control-group { display: flex; flex-direction: column; gap: 12px; margin-bottom: 10px; }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; }
+        .value-display { background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 4px; font-family: monospace; font-size: 0.9rem; color: #38bdf8; }
+        
+        input[type="range"] { width: 100%; cursor: pointer; accent-color: #38bdf8; }
+        input[type="checkbox"] { accent-color: #38bdf8; width: 16px; height: 16px; cursor: pointer; }
+
+        button { background: #3b82f6; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.2s; font-size: 0.9rem; }
+        button:hover { background: #2563eb; }
+        button.active { background: #ef4444; }
+        button.active:hover { background: #dc2626; }
+        button.btn-add { background: #10b981; margin-top: 10px; }
+        button.btn-add:hover { background: #059669; }
+        button.btn-del { background: #ef4444; padding: 4px 8px; font-size: 0.75rem; border-radius: 4px;}
+        button.btn-del:hover { background: #dc2626; }
+
+        .coord-box { background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; font-size: 0.85rem; font-family: monospace; color: #cbd5e1; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 10px; }
+        th, td { text-align: left; padding: 8px 4px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        th { color: #94a3b8; font-weight: normal; }
+
+        #toastBox {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px);
+            background: #f59e0b; color: #fff; padding: 12px 24px; border-radius: 8px; font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3); opacity: 0; visibility: hidden; transition: all 0.3s ease; z-index: 100;
         }
-        #ui-panel input[type="checkbox"] { 
-            accent-color: #00FF00; width: 16px; height: 16px; cursor: pointer; 
-        }
+        #toastBox.show { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
     </style>
+
+    <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.105.1/Build/Cesium/Widgets/widgets.css">
+    <script>
+        window.CESIUM_BASE_URL = 'https://cesium.com/downloads/cesiumjs/releases/1.105.1/Build/Cesium/';
+    </script>
 </head>
 <body>
-
-    <!-- 3D 視窗與遮罩 -->
+    <div id="loadingOverlay">
+        <div class="spinner"></div>
+        <div>載入 3D 引擎與衛星圖資中，請稍候...</div>
+    </div>
+    
+    <div id="toastBox">系統訊息</div>
+    
+    <!-- 3D 圖台與防暈遮罩 -->
     <div id="cesiumContainer"></div>
     <div id="vignette-mask" class="vignette-layer"></div>
+    
+    <div id="controlPanel">
+        <div class="panel-title">功能區</div>
+        
+        <!-- 新增：防暈眩設定區塊 -->
+        <div class="section-title">防暈眩設定</div>
+        <div class="control-group">
+            <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="antiSicknessToggle" checked>
+                <span style="font-size: 0.9rem; color: #cbd5e1;">啟用動態遮罩與景深</span>
+            </label>
+        </div>
 
-    <!-- 控制面板 -->
-    <div id="ui-panel">
-        <label>
-            <input type="checkbox" id="anti-sickness-toggle" checked>
-            開啟防暈模式 (動態遮罩 + 景深)
-        </label>
+        <div class="section-title">顯示設定</div>
+        <div class="control-group">
+            <div class="flex-between">
+                <span style="font-size:0.9rem; color:#cbd5e1;">3D 建物透明度</span>
+                <span class="value-display" id="opacityValue">40%</span>
+            </div>
+            <input type="range" id="opacitySlider" min="0" max="100" value="40">
+        </div>
+
+        <div class="section-title">點位建置作業</div>
+        <div class="control-group">
+            <button id="btnPickPoint">按鈕1: 選取平面座標</button>
+            <div class="coord-box">
+                <div>X: <span id="displayX">--</span></div>
+                <div style="margin-top:4px;">Y: <span id="displayY">--</span></div>
+            </div>
+
+            <div class="flex-between" style="margin-top: 8px;">
+                <span style="font-size:0.9rem; color:#cbd5e1;">Z 值高度設定 (公尺)</span>
+                <span class="value-display" id="displayZ">0</span>
+            </div>
+            <input type="range" id="zSlider" min="-50" max="600" value="0">
+            <button id="btnAddPoint" class="btn-add">按鈕2: 產生 3D 點座標</button>
+        </div>
+
+        <div class="section-title">已產生點位表單</div>
+        <table>
+            <thead>
+                <tr><th>X</th><th>Y</th><th>Z</th><th>操作</th></tr>
+            </thead>
+            <tbody id="pointsTableBody"></tbody>
+        </table>
     </div>
 
     <script>
-        // ================= 1. 設定底圖與初始化 Viewer =================
-        // 介接國土測繪中心 WMTS 正射影像 (PHOTO2)
-        const nlscWmtsProvider = new Cesium.WebMapTileServiceImageryProvider({
-            url: 'https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{TileMatrix}/{TileRow}/{TileCol}',
-            layer: 'PHOTO2',
-            style: 'default',
-            format: 'image/jpeg',
-            tileMatrixSetID: 'GoogleMapsCompatible',
-            maximumLevel: 19
-        });
+        const script = document.createElement('script');
+        script.src = window.CESIUM_BASE_URL + 'Cesium.js';
+        script.onload = initCesiumApp;
+        document.head.appendChild(script);
 
-        // 建立 Cesium Viewer
-        const viewer = new Cesium.Viewer('cesiumContainer', {
-            imageryProvider: nlscWmtsProvider,
-            baseLayerPicker: false, geocoder: false, homeButton: true,
-            infoBox: false, navigationHelpButton: false, sceneModePicker: false,
-            animation: false, timeline: false, 
-            requestRenderMode: true // 啟動按需渲染以節省效能
-        });
+        // UI 元素
+        const opacitySlider = document.getElementById('opacitySlider');
+        const opacityValueDisplay = document.getElementById('opacityValue');
+        const btnPickPoint = document.getElementById('btnPickPoint');
+        const displayX = document.getElementById('displayX');
+        const displayY = document.getElementById('displayY');
+        const zSlider = document.getElementById('zSlider');
+        const displayZ = document.getElementById('displayZ');
+        const btnAddPoint = document.getElementById('btnAddPoint');
+        const pointsTableBody = document.getElementById('pointsTableBody');
+        const toastBox = document.getElementById('toastBox');
+        
+        // 防暈眩 UI
+        const antiSicknessToggle = document.getElementById('antiSicknessToggle');
+        const maskElement = document.getElementById('vignette-mask');
 
-        viewer.scene.debugShowFramesPerSecond = true; // 開啟左上角 FPS 顯示
-        viewer.scene.globe.depthTestAgainstTerrain = true; // 開啟深度拾取
-
-        // ================= 2. 強制相機瞬間定位 =================
-        // 跳過外太空，直接在初始化時將視角鎖定在台北 101 附近
-        viewer.camera.setView({
-            destination: Cesium.Cartesian3.fromDegrees(121.5645, 25.0339, 1200),
-            orientation: {
-                heading: Cesium.Math.toRadians(0), // 視角面朝正北
-                pitch: Cesium.Math.toRadians(-45), // 往下看 45 度
-                roll: 0.0
-            }
-        });
-        viewer.scene.requestRender(); // 強制渲染確保畫面出現
-
-        // ================= 3. 載入 3D Tiles =================
-        try {
-            const tileset = new Cesium.Cesium3DTileset({
-                url: 'https://3dtiles.nlsc.gov.tw/building/tiles3d/0/tileset.json', 
-                maximumScreenSpaceError: 16,
-                maximumMemoryUsage: 2048
-            });
-            viewer.scene.primitives.add(tileset);
-            
-            tileset.readyPromise.then(function(tileset) {
-                console.log("3D Tiles 載入成功");
-                viewer.scene.requestRender();
-            }).catch(function(error){
-                console.warn("3D Tiles 載入被阻擋(CORS)，底圖仍維持運作: ", error);
-            });
-        } catch (error) {
-            console.log("初始化 3D Tiles 發生例外錯誤: ", error);
-        }
-
-        // ================= 4. 防暈機制核心邏輯 =================
+        // 狀態變數
+        let isPicking = false;
         let isMoving = false;
         let isAntiSicknessEnabled = true;
-        const maskElement = document.getElementById('vignette-mask');
-        const toggleCheckbox = document.getElementById('anti-sickness-toggle');
+        let currentX = null;
+        let currentY = null;
+        let pointsArray = [];
 
-        // 開啟景深效果
-        viewer.scene.postProcessStages.depthOfField.enabled = true;
+        function showToast(message) {
+            toastBox.textContent = message;
+            toastBox.classList.add('show');
+            setTimeout(() => toastBox.classList.remove('show'), 3000);
+        }
 
-        // 開關切換監聽
-        toggleCheckbox.addEventListener('change', function() {
-            isAntiSicknessEnabled = this.checked;
-            if (isAntiSicknessEnabled) {
-                viewer.scene.postProcessStages.depthOfField.enabled = true;
-            } else {
-                viewer.scene.postProcessStages.depthOfField.enabled = false;
-                maskElement.classList.remove('active');
-            }
+        function initCesiumApp() {
+            const taipeiLongitude = 121.5654;
+            const taipeiLatitude = 25.0330;
+            const viewHeight = 1500.0;
+
+            // API Key 設定
+            Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6InVmWlRUZWJKZEIzc0VibUYiLCJqdGkiOiI4ZThmMzVhMi1hNGNlLTQ4NGEtODU1NC02ODg0MjRmZTczZTQiLCJpZCI6MTQ3NDQyLCJzdWIiOiJpbHVrYWEiLCJpc3MiOiJodHRwczovL2FwaS5jZXNpdW0uY29tIiwiYXVkIjoidGVzdGNlc2l1bSIsImlhdCI6MTc5Mjg1MjE1MH0.AhSN6dizcHH7jKHXbJ6vTdHDg3FqWPj8p7Qz86moNsw';
+
+            // 初始化 Viewer (加入地形與按需渲染)
+            const viewer = new Cesium.Viewer('cesiumContainer', {
+                terrain: Cesium.Terrain.fromWorldTerrain(), 
+                baseLayerPicker: false, geocoder: false, homeButton: false,
+                sceneModePicker: false, navigationHelpButton: false, animation: false,
+                timeline: false, fullscreenButton: false, baseLayer: false,
+                requestRenderMode: true // 效能優化核心
+            });
+
+            viewer.scene.globe.depthTestAgainstTerrain = true;
+            viewer.scene.debugShowFramesPerSecond = true; // 可視化 FPS 監控
+
+            // 底圖設定
+            const imageryProvider = new Cesium.ArcGisMapServerImageryProvider({
+                url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer',
+                enablePickFeatures: false
+            });
+            viewer.imageryLayers.addImageryProvider(imageryProvider);
+
+            // 載入國土測繪中心 3D Tiles
+            Cesium.Cesium3DTileset.fromUrl('https://3dtiles.nlsc.gov.tw/building/tiles3d/0/tileset.json')
+                .then(function(tileset) {
+                    viewer.scene.primitives.add(tileset);
+                    
+                    function updateTilesetOpacity(opacityPercent) {
+                        const opacityDecimal = opacityPercent / 100;
+                        tileset.style = new Cesium.Cesium3DTileStyle({
+                            color: "color('white', " + opacityDecimal + ")"
+                        });
+                        viewer.scene.requestRender(); // 更新透明度時強制渲染
+                    }
+
+                    updateTilesetOpacity(opacitySlider.value);
+                    opacitySlider.addEventListener('input', function(e) {
+                        const currentValue = e.target.value;
+                        opacityValueDisplay.textContent = currentValue + '%';
+                        updateTilesetOpacity(currentValue);
+                    });
+                })
+                .catch(function(error) {
+                    console.error('3D Tiles 載入失敗:', error);
+                });
+
+            // 初始視角定位
+            viewer.camera.setView({
+                destination: Cesium.Cartesian3.fromDegrees(taipeiLongitude, taipeiLatitude, viewHeight),
+                orientation: {
+                    heading: Cesium.Math.toRadians(0.0), pitch: Cesium.Math.toRadians(-60.0), roll: 0.0                              
+                }
+            });
             viewer.scene.requestRender();
-        });
 
-        // 相機開始移動 (拖曳、旋轉、縮放)
-        viewer.camera.moveStart.addEventListener(function() {
-            isMoving = true;
-            if (isAntiSicknessEnabled) {
-                maskElement.classList.add('active');
-                // 移動時將景深推遠，避免前景瘋狂閃爍
-                viewer.scene.postProcessStages.depthOfField.focalDistance = 2000.0; 
-            }
-            viewer.scene.requestRender();
-        });
+            // ================= 防暈眩機制設定 =================
+            viewer.scene.postProcessStages.depthOfField.enabled = true;
 
-        // 相機停止移動
-        viewer.camera.moveEnd.addEventListener(function() {
-            isMoving = false;
-            if (isAntiSicknessEnabled) {
-                maskElement.classList.remove('active');
-            }
-            viewer.scene.requestRender();
-        });
-
-        // 滑鼠移動驅動動態對焦
-        viewer.screenSpaceEventHandler.setInputAction(function(movement) {
-            // 如果畫面正在高速移動，或是未開啟防暈，則跳過射線計算省效能
-            if (isMoving || !isAntiSicknessEnabled) return; 
-
-            // 抓取滑鼠落點的 3D 實體距離
-            const pickedPosition = viewer.scene.pickPosition(movement.endPosition);
-            
-            if (Cesium.defined(pickedPosition)) {
-                const cameraPosition = viewer.camera.position;
-                const distance = Cesium.Cartesian3.distance(cameraPosition, pickedPosition);
-                
-                // 動態更新光圈與對焦
-                viewer.scene.postProcessStages.depthOfField.focalDistance = distance;
-                viewer.scene.postProcessStages.depthOfField.focalLength = 20.0; 
-                viewer.scene.postProcessStages.depthOfField.fStop = 4.0;        
-                
+            antiSicknessToggle.addEventListener('change', function(e) {
+                isAntiSicknessEnabled = e.target.checked;
+                viewer.scene.postProcessStages.depthOfField.enabled = isAntiSicknessEnabled;
+                if (!isAntiSicknessEnabled) maskElement.classList.remove('active');
                 viewer.scene.requestRender();
-            }
-        }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+            });
 
-    </script>
-</body>
-</html>
+            viewer.camera.moveStart.addEventListener(function() {
+                isMoving = true;
+                if (isAntiSicknessEnabled) {
+                    maskElement.classList.add('active');
+                    viewer.scene.postProcessStages.depthOfField.focalDistance = 2000.0;
+                }
+                viewer.scene.requestRender();
+            });
+
+            viewer.camera.moveEnd.addEventListener(function() {
+                isMoving = false;
+                if (isAntiSicknessEnabled) {
+                    maskElement.classList.remove('active');
+                }
+                viewer.scene.requestRender();
+            });
+
+            // ================= 事件監聽 (滑鼠移動與點擊) =================
+            const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+
+            // 1. 滑鼠移動事件 (驅動動態景深)
+            handler.setInputAction(function(movement) {
+                if (isMoving || !isAntiSicknessEnabled) return; 
+
+                const pickedPosition = viewer.scene.pickPosition(movement.endPosition);
+                if (Cesium.defined(pickedPosition)) {
+                    const distance = Cesium.Cartesian3.distance(viewer.camera.position, pickedPosition);
+                    viewer.scene
