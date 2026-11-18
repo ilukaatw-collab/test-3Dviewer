@@ -3,13 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>台北市三維圖台 (終極防雷修復版)</title>
+    <title>台北市三維圖台 (1.105+ 語法修復版)</title>
     
     <style>
-        body, html {
-            margin: 0; padding: 0; width: 100%; height: 100%;
-            overflow: hidden; font-family: 'Inter', sans-serif; background-color: #000;
-        }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; background-color: #000; }
         #cesiumContainer { width: 100%; height: 100%; display: block; }
         
         #loadingOverlay {
@@ -19,7 +16,7 @@
             font-size: 1.25rem; z-index: 20; transition: opacity 0.5s ease;
         }
         
-        /* 防暈眩遮罩 (絕對置頂) */
+        /* 防暈眩遮罩 */
         .vignette-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             z-index: 9999; pointer-events: none; 
@@ -52,131 +49,143 @@
     
     <div id="ui-panel">
         <label>
-            <!-- 預設先不要打勾，確保一開始畫面乾淨、模型清晰可見 -->
             <input type="checkbox" id="antiSicknessToggle">
             開啟防暈模式 (動態遮罩 + 景深)
         </label>
     </div>
 
     <script>
-        // 拿掉複雜的 async/await，改回最單純的同步執行，確保不會卡死
-        const taipeiLongitude = 121.5654;
-        const taipeiLatitude = 25.0330;
-        const viewHeight = 1500.0;
+        // 必須包在 async 函數內，才能使用最新的非同步語法
+        async function initApp() {
+            const taipeiLongitude = 121.5654;
+            const taipeiLatitude = 25.0330;
+            const viewHeight = 1500.0;
 
-        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6InVmWlRUZWJKZEIzc0VibUYiLCJqdGkiOiI4ZThmMzVhMi1hNGNlLTQ4NGEtODU1NC02ODg0MjRmZTczZTQiLCJpZCI6MTQ3NDQyLCJzdWIiOiJpbHVrYWEiLCJpc3MiOiJodHRwczovL2FwaS5jZXNpdW0uY29tIiwiYXVkIjoidGVzdGNlc2l1bSIsImlhdCI6MTc5Mjg1MjE1MH0.AhSN6dizcHH7jKHXbJ6vTdHDg3FqWPj8p7Qz86moNsw';
+            Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6InVmWlRUZWJKZEIzc0VibUYiLCJqdGkiOiI4ZThmMzVhMi1hNGNlLTQ4NGEtODU1NC02ODg0MjRmZTczZTQiLCJpZCI6MTQ3NDQyLCJzdWIiOiJpbHVrYWEiLCJpc3MiOiJodHRwczovL2FwaS5jZXNpdW0uY29tIiwiYXVkIjoidGVzdGNlc2l1bSIsImlhdCI6MTc5Mjg1MjE1MH0.AhSN6dizcHH7jKHXbJ6vTdHDg3FqWPj8p7Qz86moNsw';
 
-        // 1. 強制改回國土測繪中心的 PHOTO2 正射影像當底圖 (最穩定)
-        const nlscProvider = new Cesium.WebMapTileServiceImageryProvider({
-            url: 'https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{TileMatrix}/{TileRow}/{TileCol}',
-            layer: 'PHOTO2',
-            style: 'default',
-            format: 'image/jpeg',
-            tileMatrixSetID: 'GoogleMapsCompatible',
-            maximumLevel: 19
-        });
+            try {
+                // 修正 1：地形必須改用 await Cesium.createWorldTerrainAsync()
+                const terrain = await Cesium.createWorldTerrainAsync();
 
-        // 2. 初始化 Viewer，並將國土測繪中心底圖塞入
-        const viewer = new Cesium.Viewer('cesiumContainer', {
-            imageryProvider: nlscProvider,
-            terrainProvider: Cesium.createWorldTerrain(), 
-            baseLayerPicker: false, geocoder: false, homeButton: false,
-            sceneModePicker: false, navigationHelpButton: false, animation: false,
-            timeline: false, fullscreenButton: false
-        });
+                // 修正 2：Viewer 初始化不可再放入 imageryProvider，先給空陣列
+                const viewer = new Cesium.Viewer('cesiumContainer', {
+                    terrainProvider: terrain, 
+                    baseLayerPicker: false, geocoder: false, homeButton: false,
+                    sceneModePicker: false, navigationHelpButton: false, animation: false,
+                    timeline: false, fullscreenButton: false,
+                    baseLayer: false // 初始化不載入預設底圖
+                });
 
-        viewer.scene.globe.depthTestAgainstTerrain = true;
+                viewer.scene.globe.depthTestAgainstTerrain = true;
 
-        // 3. 載入國土測繪中心 3D Tiles
-        try {
-            const tileset = new Cesium.Cesium3DTileset({
-                url: 'https://3dtiles.nlsc.gov.tw/building/tiles3d/0/tileset.json'
-            });
-            viewer.scene.primitives.add(tileset);
-        } catch (error) {
-            console.log("3D 模型連線異常", error);
+                // 修正 3：底圖必須使用 ImageryLayer 並指定給 baseLayer
+                const nlscProvider = new Cesium.WebMapTileServiceImageryProvider({
+                    url: 'https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{TileMatrix}/{TileRow}/{TileCol}',
+                    layer: 'PHOTO2',
+                    style: 'default',
+                    format: 'image/jpeg',
+                    tileMatrixSetID: 'GoogleMapsCompatible',
+                    maximumLevel: 19
+                });
+                viewer.scene.imageryLayers.addImageryProvider(nlscProvider);
+
+                // 修正 4：3D Tiles 必須改用 await Cesium.Cesium3DTileset.fromUrl()
+                try {
+                    const tileset = await Cesium.Cesium3DTileset.fromUrl('https://3dtiles.nlsc.gov.tw/building/tiles3d/0/tileset.json');
+                    viewer.scene.primitives.add(tileset);
+                } catch (tileErr) {
+                    // 捕捉 GLB 檔案 deocding failed 錯誤，不讓程式崩潰
+                    console.warn("部分 3D 模型載入失敗，略過錯誤繼續執行", tileErr);
+                }
+
+                // 飛向台北
+                viewer.camera.setView({
+                    destination: Cesium.Cartesian3.fromDegrees(taipeiLongitude, taipeiLatitude, viewHeight),
+                    orientation: { heading: 0.0, pitch: Cesium.Math.toRadians(-60.0), roll: 0.0 }
+                });
+
+                // ================= 防暈機制設定 =================
+                // 修正 5：確認 postProcessStages 存在後才設定 enabled (解決 Uncaught TypeError)
+                if (viewer.scene.postProcessStages && viewer.scene.postProcessStages.depthOfField) {
+                    viewer.scene.postProcessStages.depthOfField.enabled = false;
+                    viewer.scene.postProcessStages.depthOfField.focalLength = 20.0; 
+                    viewer.scene.postProcessStages.depthOfField.fStop = 4.0;
+                }
+
+                const antiSicknessToggle = document.getElementById('antiSicknessToggle');
+                const maskElement = document.getElementById('vignette-mask');
+                let isMoving = false;
+                let isAntiSicknessEnabled = false;
+
+                antiSicknessToggle.addEventListener('change', function(e) {
+                    isAntiSicknessEnabled = e.target.checked;
+                    if (viewer.scene.postProcessStages.depthOfField) {
+                        viewer.scene.postProcessStages.depthOfField.enabled = isAntiSicknessEnabled;
+                    }
+                    if (!isAntiSicknessEnabled) {
+                        maskElement.classList.remove('active');
+                    }
+                });
+
+                const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+
+                function enableMask() {
+                    isMoving = true;
+                    if (isAntiSicknessEnabled) {
+                        maskElement.classList.add('active');
+                        if (viewer.scene.postProcessStages.depthOfField) {
+                            viewer.scene.postProcessStages.depthOfField.focalDistance = 3000.0; 
+                        }
+                    }
+                }
+
+                function disableMask() {
+                    isMoving = false;
+                    if (isAntiSicknessEnabled) {
+                        maskElement.classList.remove('active');
+                    }
+                }
+
+                handler.setInputAction(enableMask, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+                handler.setInputAction(enableMask, Cesium.ScreenSpaceEventType.MIDDLE_DOWN);
+                handler.setInputAction(enableMask, Cesium.ScreenSpaceEventType.RIGHT_DOWN);
+
+                handler.setInputAction(disableMask, Cesium.ScreenSpaceEventType.LEFT_UP);
+                handler.setInputAction(disableMask, Cesium.ScreenSpaceEventType.MIDDLE_UP);
+                handler.setInputAction(disableMask, Cesium.ScreenSpaceEventType.RIGHT_UP);
+
+                let wheelTimer;
+                handler.setInputAction(function() {
+                    enableMask();
+                    clearTimeout(wheelTimer);
+                    wheelTimer = setTimeout(disableMask, 500);
+                }, Cesium.ScreenSpaceEventType.WHEEL);
+
+                handler.setInputAction(function(movement) {
+                    if (isMoving || !isAntiSicknessEnabled) return; 
+                    const pickedPosition = viewer.scene.pickPosition(movement.endPosition);
+                    if (Cesium.defined(pickedPosition) && viewer.scene.postProcessStages.depthOfField) {
+                        const distance = Cesium.Cartesian3.distance(viewer.camera.position, pickedPosition);
+                        viewer.scene.postProcessStages.depthOfField.focalDistance = distance;
+                    }
+                }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+            } catch (error) {
+                console.error("初始化過程中發生未預期錯誤:", error);
+            } finally {
+                // 無論成功與否，最終一定移除 Loading 畫面
+                setTimeout(() => {
+                    const overlay = document.getElementById('loadingOverlay');
+                    if(overlay) {
+                        overlay.style.opacity = '0';
+                        setTimeout(() => overlay.style.display = 'none', 500);
+                    }
+                }, 1000);
+            }
         }
 
-        // 4. 定位到台北 101 上空
-        viewer.camera.setView({
-            destination: Cesium.Cartesian3.fromDegrees(taipeiLongitude, taipeiLatitude, viewHeight),
-            orientation: { heading: 0.0, pitch: Cesium.Math.toRadians(-60.0), roll: 0.0 }
-        });
-
-        // 5. 強制關閉 Loading 畫面，絕不卡死
-        setTimeout(() => {
-            const overlay = document.getElementById('loadingOverlay');
-            overlay.style.opacity = '0';
-            setTimeout(() => overlay.style.display = 'none', 500);
-        }, 1500);
-
-        // ================= 防暈機制設定 =================
-        const antiSicknessToggle = document.getElementById('antiSicknessToggle');
-        const maskElement = document.getElementById('vignette-mask');
-        let isMoving = false;
-        let isAntiSicknessEnabled = false; // 預設為 false
-
-        // 初始確保景深是關閉的
-        viewer.scene.postProcessStages.depthOfField.enabled = false;
-        viewer.scene.postProcessStages.depthOfField.focalLength = 20.0; 
-        viewer.scene.postProcessStages.depthOfField.fStop = 4.0;
-
-        // 監聽勾選狀態
-        antiSicknessToggle.addEventListener('change', function(e) {
-            isAntiSicknessEnabled = e.target.checked;
-            viewer.scene.postProcessStages.depthOfField.enabled = isAntiSicknessEnabled;
-            if (!isAntiSicknessEnabled) {
-                maskElement.classList.remove('active');
-            }
-        });
-
-        // 綁定滑鼠硬體事件 (確保遮罩零延遲)
-        const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-
-        function enableMask() {
-            isMoving = true;
-            if (isAntiSicknessEnabled) {
-                maskElement.classList.add('active');
-                viewer.scene.postProcessStages.depthOfField.focalDistance = 3000.0; // 拖曳時強制對焦在遠處
-            }
-        }
-
-        function disableMask() {
-            isMoving = false;
-            if (isAntiSicknessEnabled) {
-                maskElement.classList.remove('active');
-            }
-        }
-
-        // 滑鼠按下 = 遮罩出現
-        handler.setInputAction(enableMask, Cesium.ScreenSpaceEventType.LEFT_DOWN);
-        handler.setInputAction(enableMask, Cesium.ScreenSpaceEventType.MIDDLE_DOWN);
-        handler.setInputAction(enableMask, Cesium.ScreenSpaceEventType.RIGHT_DOWN);
-
-        // 滑鼠放開 = 遮罩消失
-        handler.setInputAction(disableMask, Cesium.ScreenSpaceEventType.LEFT_UP);
-        handler.setInputAction(disableMask, Cesium.ScreenSpaceEventType.MIDDLE_UP);
-        handler.setInputAction(disableMask, Cesium.ScreenSpaceEventType.RIGHT_UP);
-
-        // 滾輪 = 遮罩閃現 0.5 秒
-        let wheelTimer;
-        handler.setInputAction(function() {
-            enableMask();
-            clearTimeout(wheelTimer);
-            wheelTimer = setTimeout(disableMask, 500);
-        }, Cesium.ScreenSpaceEventType.WHEEL);
-
-        // 滑鼠移動 = 啟動景深對焦測距
-        handler.setInputAction(function(movement) {
-            if (isMoving || !isAntiSicknessEnabled) return; 
-
-            const pickedPosition = viewer.scene.pickPosition(movement.endPosition);
-            if (Cesium.defined(pickedPosition)) {
-                const distance = Cesium.Cartesian3.distance(viewer.camera.position, pickedPosition);
-                viewer.scene.postProcessStages.depthOfField.focalDistance = distance;
-            }
-        }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
-
+        // 啟動主程式
+        initApp();
     </script>
 </body>
 </html>
